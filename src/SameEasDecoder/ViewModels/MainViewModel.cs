@@ -41,6 +41,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private AlertItem? _current;
     private DateTime _currentAt, _eomUntil, _lastExpiryRefresh;
     private AudioDevice? _resumeDevice;
+    private AudioDevice? _pausedForPlayback;
     private bool _suppressDeviceRestart;
     private ObservableCollection<LogItem>? _activationLog;
     private AlertItem? _activationItem;
@@ -314,6 +315,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     {
         SourceKind.Device => $"Listening · {_engine.SourceName}",
         SourceKind.File => $"Decoding file · {_engine.SourceName}",
+        _ when _pausedForPlayback is not null => $"Listening paused while a recording plays · {_pausedForPlayback.Name}",
         _ => "Idle — choose an input and press Start listening",
     };
 
@@ -419,7 +421,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     public void OpenFile(string path, bool fast)
     {
-        _resumeDevice ??= _engine.Kind == SourceKind.Device ? SelectedDevice : null;
+        _resumeDevice ??= _engine.Kind == SourceKind.Device ? SelectedDevice : _pausedForPlayback;
+        _pausedForPlayback = null;
         try
         {
             _engine.StartFile(path, fast);
@@ -449,6 +452,11 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     {
         if (SelectedDevice is null) return;
         _resumeDevice = null;
+        if (_playing is not null)
+        {
+            _pausedForPlayback = null;
+            StopPlayback(resumeListening: false);
+        }
         try
         {
             _engine.StartDevice(SelectedDevice);
@@ -684,8 +692,18 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             StopPlayback();
             return;
         }
-        StopPlayback();
-        if (item.RecordingPath is null || !File.Exists(item.RecordingPath)) return;
+        StopPlayback(resumeListening: false);
+        if (item.RecordingPath is null || !File.Exists(item.RecordingPath))
+        {
+            ResumeAfterPlayback();
+            return;
+        }
+        if (_engine.Kind == SourceKind.Device)
+        {
+            _pausedForPlayback = SelectedDevice;
+            StopSource();
+            AddLog(LogKind.Info, "Listening paused while the recording plays, so the playback is not decoded as a new alert.");
+        }
         try
         {
             _playbackEngine.StartFile(item.RecordingPath, fast: false);
@@ -699,16 +717,34 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         {
             _playbackEngine.Stop();
             AddLog(LogKind.Error, $"Could not play recording: {ex.Message}");
+            ResumeAfterPlayback();
         }
         RaisePlayback();
     }
 
-    private void StopPlayback()
+    private void StopPlayback() => StopPlayback(resumeListening: true);
+
+    private void StopPlayback(bool resumeListening)
     {
         _playbackEngine.Stop();
         if (_playing is not null) _playing.IsPlaying = false;
         _playing = null;
         RaisePlayback();
+        if (resumeListening) ResumeAfterPlayback();
+    }
+
+    private void ResumeAfterPlayback()
+    {
+        var device = _pausedForPlayback;
+        _pausedForPlayback = null;
+        if (device is null || _engine.Kind != SourceKind.None) { RaiseSourceState(); return; }
+        var match = Devices.FirstOrDefault(d => d.Id == device.Id);
+        if (match is null) { RaiseSourceState(); return; }
+        _suppressDeviceRestart = true;
+        SelectedDevice = match;
+        _suppressDeviceRestart = false;
+        StartListening();
+        AddLog(LogKind.Info, "Playback finished — listening resumed.");
     }
 
     private void RaisePlayback()
@@ -716,6 +752,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         Raise(nameof(IsPlayingRecording));
         Raise(nameof(PlaybackTitle));
         Raise(nameof(VisualPipeline));
+        Raise(nameof(StatusText));
         CommandManager.InvalidateRequerySuggested();
     }
 
