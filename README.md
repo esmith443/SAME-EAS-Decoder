@@ -1,4 +1,13 @@
-# SAME / EAS Decoder
+<p align="center">
+  <img src="docs/banner.png" alt="SAME / EAS Decoder" width="100%">
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Windows-10%20%7C%2011-0B2A55?style=flat-square" alt="Windows 10 | 11">
+  <img src="https://img.shields.io/badge/.NET-10-1565C0?style=flat-square" alt=".NET 10">
+  <img src="https://img.shields.io/badge/UI-WPF-2E9BEA?style=flat-square" alt="WPF">
+  <img src="https://img.shields.io/badge/mode-receive%20only-3DD68C?style=flat-square" alt="Receive only">
+</p>
 
 A Windows app that listens to any audio source and decodes Emergency Alert System messages in real time. It decodes SAME headers, EAS and NOAA Weather Radio attention tones, and end-of-message bursts, then maps the affected area.
 
@@ -13,7 +22,15 @@ A Windows app that listens to any audio source and decodes Emergency Alert Syste
 - **Live meters and spectrum**: indicators for SAME data, the EAS tone (853 + 960 Hz) and the NWR tone (1050 Hz)
 - **Verbose activity log**: raw bytes, damaged bits and a burst-by-burst comparison for every alert
 - **History**: every alert is kept with its map, activity log and recording; search, filter and export to CSV
-- **Recording**: each alert is saved as a WAV file, which plays back through the meters and spectrum
+- **Recording**: each alert is saved as a WAV file and plays back through the meters and spectrum, with live listening paused so playback is never decoded as a new alert
+
+## How it works
+
+![Listen, detect, decode, verify, map](docs/how-it-works.png)
+
+![Inside a SAME header](docs/same-header.png)
+
+## Screenshots
 
 | History | Map |
 |---|---|
