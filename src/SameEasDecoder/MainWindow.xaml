@@ -24,16 +24,6 @@
             </CollectionViewSource.GroupDescriptions>
         </CollectionViewSource>
 
-        <DataTemplate x:Key="BroadcastIcon">
-            <Canvas Width="22" Height="22">
-                <Ellipse Canvas.Left="9" Canvas.Top="9" Width="4" Height="4" Fill="{StaticResource Accent}" />
-                <Path Stroke="{StaticResource Accent}" StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
-                      Data="M7,7 A5.66,5.66 0 0 0 7,15 M15,7 A5.66,5.66 0 0 1 15,15" />
-                <Path Stroke="{StaticResource Accent}" StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Opacity="0.6"
-                      Data="M4,4 A9.9,9.9 0 0 0 4,18 M18,4 A9.9,9.9 0 0 1 18,18" />
-            </Canvas>
-        </DataTemplate>
-
         <DataTemplate x:Key="DeviceTemplate" DataType="{x:Type a:AudioDevice}">
             <Grid>
                 <Grid.ColumnDefinitions>
@@ -301,9 +291,7 @@
                 </Grid.ColumnDefinitions>
 
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                    <Border Width="36" Height="36" CornerRadius="9" Background="{StaticResource AccentSoft}">
-                        <ContentPresenter ContentTemplate="{StaticResource BroadcastIcon}" HorizontalAlignment="Center" VerticalAlignment="Center" />
-                    </Border>
+                    <Image Source="{StaticResource EmblemSmallImage}" Width="38" Height="38" />
                     <StackPanel Margin="12,0,0,0" VerticalAlignment="Center">
                         <TextBlock Text="SAME / EAS Decoder" FontSize="15" FontWeight="SemiBold" />
                         <TextBlock Text="Emergency alert monitor" FontSize="11.5" Foreground="{StaticResource Text3}" />
@@ -666,13 +654,7 @@
 
                     <Border Grid.Row="1" Style="{StaticResource CardBorder}" Margin="0,0,0,12" Padding="24,28" Visibility="{Binding HasCurrentAlert, Converter={StaticResource NotVis}}">
                         <StackPanel HorizontalAlignment="Center" MaxWidth="500">
-                            <Border Width="60" Height="60" CornerRadius="30" Background="{StaticResource AccentSoft}" HorizontalAlignment="Center">
-                                <ContentPresenter ContentTemplate="{StaticResource BroadcastIcon}" HorizontalAlignment="Center" VerticalAlignment="Center">
-                                    <ContentPresenter.LayoutTransform>
-                                        <ScaleTransform ScaleX="1.35" ScaleY="1.35" />
-                                    </ContentPresenter.LayoutTransform>
-                                </ContentPresenter>
-                            </Border>
+                            <Image Source="{StaticResource EmblemImage}" Width="84" Height="84" HorizontalAlignment="Center" />
                             <TextBlock Text="No alerts decoded yet" FontSize="18" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,16,0,8" />
                             <TextBlock TextWrapping="Wrap" TextAlignment="Center" Foreground="{StaticResource Text2}" LineHeight="20">
                                 Pick an input — a weather radio or scanner on your line-in, or <Run Foreground="{StaticResource Text}">System audio</Run> for a web stream — and press
