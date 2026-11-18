@@ -1,0 +1,807 @@
+﻿<Window x:Class="SameEasDecoder.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:c="clr-namespace:SameEasDecoder.Controls"
+        xmlns:vm="clr-namespace:SameEasDecoder.ViewModels"
+        xmlns:a="clr-namespace:SameEasDecoder.Audio"
+        Title="SAME / EAS Decoder" Icon="Assets/app.ico"
+        Width="1320" Height="860" MinWidth="1040" MinHeight="680"
+        WindowStartupLocation="CenterScreen"
+        Background="{StaticResource Bg}" Foreground="{StaticResource Text}"
+        FontFamily="{StaticResource UiFont}" FontSize="13"
+        UseLayoutRounding="True" SnapsToDevicePixels="True"
+        TextOptions.TextFormattingMode="Display" AllowDrop="True">
+
+    <Window.Resources>
+        <c:BoolToVisibilityConverter x:Key="Vis" />
+        <c:BoolToVisibilityConverter x:Key="NotVis" Invert="True" />
+        <c:NotConverter x:Key="Not" />
+        <c:LessThanConverter x:Key="LessThan" />
+
+        <CollectionViewSource x:Key="DeviceView" Source="{Binding Devices}">
+            <CollectionViewSource.GroupDescriptions>
+                <PropertyGroupDescription PropertyName="GroupName" />
+            </CollectionViewSource.GroupDescriptions>
+        </CollectionViewSource>
+
+        <DataTemplate x:Key="BroadcastIcon">
+            <Canvas Width="22" Height="22">
+                <Ellipse Canvas.Left="9" Canvas.Top="9" Width="4" Height="4" Fill="{StaticResource Accent}" />
+                <Path Stroke="{StaticResource Accent}" StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                      Data="M7,7 A5.66,5.66 0 0 0 7,15 M15,7 A5.66,5.66 0 0 1 15,15" />
+                <Path Stroke="{StaticResource Accent}" StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Opacity="0.6"
+                      Data="M4,4 A9.9,9.9 0 0 0 4,18 M18,4 A9.9,9.9 0 0 1 18,18" />
+            </Canvas>
+        </DataTemplate>
+
+        <DataTemplate x:Key="DeviceTemplate" DataType="{x:Type a:AudioDevice}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="24" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="{Binding Glyph}" Style="{StaticResource Glyph}" FontSize="13" Foreground="{StaticResource Text2}" VerticalAlignment="Top" Margin="0,2,0,0" />
+                <StackPanel Grid.Column="1">
+                    <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                    <TextBlock x:Name="Detail" Text="{Binding Detail}" FontSize="11.5" Foreground="{StaticResource Text3}" Margin="0,1,0,0" />
+                </StackPanel>
+            </Grid>
+            <DataTemplate.Triggers>
+                <DataTrigger Binding="{Binding RelativeSource={RelativeSource AncestorType=ComboBoxItem}}" Value="{x:Null}">
+                    <Setter TargetName="Detail" Property="Visibility" Value="Collapsed" />
+                </DataTrigger>
+            </DataTemplate.Triggers>
+        </DataTemplate>
+
+        <DataTemplate x:Key="LogTemplate" DataType="{x:Type vm:LogItem}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="62" />
+                    <ColumnDefinition Width="16" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="{Binding TimeText}" FontFamily="{StaticResource MonoFont}" FontSize="11.5" Foreground="{StaticResource Text3}" Margin="0,1,0,0" />
+                <Ellipse Grid.Column="1" Width="6" Height="6" Fill="{Binding DotBrush}" VerticalAlignment="Top" Margin="0,6,0,0" HorizontalAlignment="Left" />
+                <StackPanel Grid.Column="2">
+                    <TextBlock Text="{Binding Message}" TextWrapping="Wrap" FontSize="12.5" Foreground="{StaticResource Text2}" />
+                    <Border x:Name="Details" Background="#0F1217" CornerRadius="5" Padding="8,5" Margin="0,4,0,3" HorizontalAlignment="Left" Visibility="Collapsed">
+                        <ItemsControl ItemsSource="{Binding Lines}" Focusable="False">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <c:SegmentText Segments="{Binding}" FontFamily="{StaticResource MonoFont}" FontSize="11.5" TextWrapping="Wrap" LineHeight="17" />
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </Border>
+                </StackPanel>
+            </Grid>
+            <DataTemplate.Triggers>
+                <MultiDataTrigger>
+                    <MultiDataTrigger.Conditions>
+                        <Condition Binding="{Binding HasLines}" Value="True" />
+                        <Condition Binding="{Binding DataContext.VerboseLog, RelativeSource={RelativeSource AncestorType=Window}}" Value="True" />
+                    </MultiDataTrigger.Conditions>
+                    <Setter TargetName="Details" Property="Visibility" Value="Visible" />
+                </MultiDataTrigger>
+            </DataTemplate.Triggers>
+        </DataTemplate>
+
+        <Style x:Key="SignalTitle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="Foreground" Value="{StaticResource Text}" />
+        </Style>
+        <Style x:Key="SignalSub" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="11.5" />
+            <Setter Property="Foreground" Value="{StaticResource Text3}" />
+        </Style>
+        <Style x:Key="FieldLabel" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="10.5" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="{StaticResource Text3}" />
+        </Style>
+
+        <DataTemplate x:Key="AlertTemplate" DataType="{x:Type vm:AlertItem}">
+            <Border x:Name="Card" Background="{StaticResource Panel}" BorderBrush="{StaticResource Stroke}" BorderThickness="1" CornerRadius="10" Margin="0,0,0,12">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="4" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Border Background="{Binding SeverityBrush}" CornerRadius="10,0,0,10" />
+                    <StackPanel Grid.Column="1" Margin="18,14,16,14">
+                        <DockPanel LastChildFill="True">
+                            <TextBlock DockPanel.Dock="Right" Text="{Binding ReceivedText}" Foreground="{StaticResource Text3}" FontSize="12" VerticalAlignment="Center" ToolTip="{Binding ReceivedLong}" />
+                            <Border CornerRadius="4" Padding="7,2" VerticalAlignment="Center" Margin="0,0,10,0" BorderThickness="1" BorderBrush="{Binding SeverityBrush}">
+                                <TextBlock Text="{Binding SeverityLabel}" FontSize="10.5" FontWeight="Bold" Foreground="{Binding SeverityBrush}" />
+                            </Border>
+                            <TextBlock Text="{Binding EventName}" FontSize="17" FontWeight="SemiBold" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                        </DockPanel>
+                        <TextBlock Text="{Binding OriginLine}" Foreground="{StaticResource Text2}" Margin="0,4,0,0" />
+
+                        <Grid Margin="0,14,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" MinWidth="230" />
+                                <ColumnDefinition x:Name="GapCol" Width="18" />
+                                <ColumnDefinition x:Name="MapCol" Width="1.05*" MaxWidth="480" />
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <StackPanel>
+                                <TextBlock Text="AREAS" Style="{StaticResource FieldLabel}" Margin="0,0,0,6" />
+                                <ItemsControl ItemsSource="{Binding AreaNames}">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <WrapPanel />
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border Style="{StaticResource Chip}">
+                                                <TextBlock Text="{Binding}" FontSize="12" Foreground="{StaticResource Text}" />
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+
+                                <Grid Margin="0,8,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+                                    <StackPanel Margin="0,0,10,12">
+                                        <TextBlock Text="ISSUED" Style="{StaticResource FieldLabel}" />
+                                        <TextBlock Text="{Binding IssuedText}" Margin="0,3,0,0" TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Text="{Binding IssuedUtcText}" FontSize="11.5" Foreground="{StaticResource Text3}" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Margin="0,0,0,12">
+                                        <TextBlock Text="EXPIRES" Style="{StaticResource FieldLabel}" />
+                                        <TextBlock Text="{Binding ExpiresText}" Margin="0,3,0,0" TextTrimming="CharacterEllipsis" />
+                                        <TextBlock x:Name="Expiry" Text="{Binding ExpiryState}" FontSize="11.5" Foreground="{StaticResource Green}" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Row="1" Margin="0,0,10,8">
+                                        <TextBlock Text="VALID FOR" Style="{StaticResource FieldLabel}" />
+                                        <TextBlock Text="{Binding ValidForText}" Margin="0,3,0,0" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Row="1" Grid.Column="1" Margin="0,0,0,8">
+                                        <TextBlock Text="RECEIVED VIA" Style="{StaticResource FieldLabel}" />
+                                        <TextBlock Text="{Binding Origin}" Margin="0,3,0,0" TextTrimming="CharacterEllipsis" ToolTip="{Binding Origin}" />
+                                    </StackPanel>
+                                </Grid>
+
+                                <WrapPanel>
+                                    <Border x:Name="VoteChip" Style="{StaticResource Chip}" Background="{StaticResource GreenSoft}">
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock x:Name="VoteGlyph" Text="&#xE73E;" Style="{StaticResource Glyph}" FontSize="11" Foreground="{StaticResource Green}" Margin="0,0,6,0" />
+                                            <TextBlock x:Name="VoteText" Text="{Binding VoteText}" FontSize="12" Foreground="{StaticResource Green}" />
+                                        </StackPanel>
+                                    </Border>
+                                    <Border Style="{StaticResource Chip}" Background="{StaticResource AmberSoft}" Visibility="{Binding HasTone, Converter={StaticResource Vis}}">
+                                        <TextBlock FontSize="12" Foreground="{StaticResource Amber}">
+                                            <Run Text="Tone" /> <Run Text="{Binding ToneText, Mode=OneWay}" />
+                                        </TextBlock>
+                                    </Border>
+                                    <Border Style="{StaticResource Chip}" Background="{StaticResource GreenSoft}" Visibility="{Binding EomReceived, Converter={StaticResource Vis}}">
+                                        <TextBlock Text="End of message" FontSize="12" Foreground="{StaticResource Green}" />
+                                    </Border>
+                                </WrapPanel>
+                            </StackPanel>
+
+                            <Border x:Name="MapBox" Grid.Column="2" Height="236" VerticalAlignment="Top" CornerRadius="8"
+                                    BorderBrush="{StaticResource Stroke}" BorderThickness="1" Background="#0B0E13">
+                                <c:AlertMap Areas="{Binding Areas}" HighlightColor="{Binding SeverityColor}" ExpandCommand="{Binding ShowMapCommand}" />
+                            </Border>
+                        </Grid>
+
+                        <Border Background="{StaticResource Field}" CornerRadius="6" Padding="10,6,6,6" Margin="0,10,0,0">
+                            <DockPanel>
+                                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                                    <Button Style="{StaticResource BtnGhost}" Command="{Binding PlayCommand}" ToolTip="Play the recorded alert audio (shown on the level meters and spectrum)"
+                                            Visibility="{Binding HasRecording, Converter={StaticResource Vis}}">
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="{Binding PlayGlyph}" Style="{StaticResource Glyph}" FontSize="11" Margin="0,0,6,0" />
+                                            <TextBlock Text="{Binding PlayText}" />
+                                        </StackPanel>
+                                    </Button>
+                                    <Button Style="{StaticResource BtnGhost}" Command="{Binding ShowFileCommand}" ToolTip="Show the recording in File Explorer"
+                                            Visibility="{Binding HasRecording, Converter={StaticResource Vis}}">
+                                        <TextBlock Text="&#xE838;" Style="{StaticResource Glyph}" FontSize="12" />
+                                    </Button>
+                                    <Button Style="{StaticResource BtnGhost}" Command="{Binding ShowMapCommand}" ToolTip="Open a large, zoomable map">
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="&#xE707;" Style="{StaticResource Glyph}" FontSize="12" Margin="0,0,6,0" />
+                                            <TextBlock Text="Map" />
+                                        </StackPanel>
+                                    </Button>
+                                    <Button Style="{StaticResource BtnGhost}" Command="{Binding CopyCommand}" ToolTip="Copy alert details">
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="&#xE8C8;" Style="{StaticResource Glyph}" FontSize="11" Margin="0,0,6,0" />
+                                            <TextBlock Text="Copy" />
+                                        </StackPanel>
+                                    </Button>
+                                </StackPanel>
+                                <TextBox Text="{Binding RawHeader, Mode=OneWay}" IsReadOnly="True" Background="Transparent" BorderThickness="0"
+                                         Foreground="{StaticResource Text2}" CaretBrush="{StaticResource Text2}" FontFamily="{StaticResource MonoFont}"
+                                         FontSize="12" TextWrapping="Wrap" VerticalAlignment="Center" Padding="0" />
+                            </DockPanel>
+                        </Border>
+                    </StackPanel>
+                </Grid>
+            </Border>
+            <DataTemplate.Triggers>
+                <DataTrigger Binding="{Binding VoteOk}" Value="False">
+                    <Setter TargetName="VoteChip" Property="Background" Value="{StaticResource AmberSoft}" />
+                    <Setter TargetName="VoteGlyph" Property="Text" Value="&#xE7BA;" />
+                    <Setter TargetName="VoteGlyph" Property="Foreground" Value="{StaticResource Amber}" />
+                    <Setter TargetName="VoteText" Property="Foreground" Value="{StaticResource Amber}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding IsExpired}" Value="True">
+                    <Setter TargetName="Expiry" Property="Foreground" Value="{StaticResource Text3}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding IsReceiving}" Value="True">
+                    <Setter TargetName="VoteChip" Property="Background" Value="{StaticResource AccentSoft}" />
+                    <Setter TargetName="VoteGlyph" Property="Text" Value="&#xE895;" />
+                    <Setter TargetName="VoteGlyph" Property="Foreground" Value="{StaticResource Accent}" />
+                    <Setter TargetName="VoteText" Property="Foreground" Value="{StaticResource Accent}" />
+                    <Setter TargetName="Card" Property="BorderBrush" Value="{StaticResource Accent}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding ActualWidth, ElementName=Card, Converter={StaticResource LessThan}, ConverterParameter=660}" Value="True">
+                    <Setter TargetName="GapCol" Property="Width" Value="0" />
+                    <Setter TargetName="MapCol" Property="Width" Value="0" />
+                    <Setter TargetName="MapBox" Property="Grid.Column" Value="0" />
+                    <Setter TargetName="MapBox" Property="Grid.Row" Value="1" />
+                    <Setter TargetName="MapBox" Property="Margin" Value="0,8,0,0" />
+                </DataTrigger>
+            </DataTemplate.Triggers>
+        </DataTemplate>
+
+        <DataTemplate x:Key="HistoryRowTemplate" DataType="{x:Type vm:AlertItem}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="4" />
+                    <ColumnDefinition Width="12" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <Border Background="{Binding SeverityBrush}" CornerRadius="2" />
+                <StackPanel Grid.Column="2">
+                    <TextBlock Text="{Binding EventName}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                    <TextBlock Text="{Binding AreaSummary}" FontSize="12" Foreground="{StaticResource Text2}" TextTrimming="CharacterEllipsis" Margin="0,2,0,0" />
+                    <TextBlock Text="{Binding ReceivedLong}" FontSize="11.5" Foreground="{StaticResource Text3}" Margin="0,2,0,0" TextTrimming="CharacterEllipsis" />
+                </StackPanel>
+                <StackPanel Grid.Column="3" VerticalAlignment="Top" Margin="8,2,0,0" Orientation="Horizontal">
+                    <TextBlock Text="&#xE8D6;" Style="{StaticResource Glyph}" FontSize="11" Foreground="{StaticResource Text3}" ToolTip="Recording available"
+                               Visibility="{Binding HasRecording, Converter={StaticResource Vis}}" />
+                    <TextBlock Text="{Binding EventCode}" FontFamily="{StaticResource MonoFont}" FontSize="11" Foreground="{StaticResource Text3}" Margin="8,0,0,0" />
+                </StackPanel>
+            </Grid>
+        </DataTemplate>
+    </Window.Resources>
+
+    <Grid Background="{StaticResource Bg}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <Border Background="{StaticResource Panel}" BorderBrush="{StaticResource Stroke}" BorderThickness="0,0,0,1" Padding="18,12">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="24" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <Border Width="36" Height="36" CornerRadius="9" Background="{StaticResource AccentSoft}">
+                        <ContentPresenter ContentTemplate="{StaticResource BroadcastIcon}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <StackPanel Margin="12,0,0,0" VerticalAlignment="Center">
+                        <TextBlock Text="SAME / EAS Decoder" FontSize="15" FontWeight="SemiBold" />
+                        <TextBlock Text="Emergency alert monitor" FontSize="11.5" Foreground="{StaticResource Text3}" />
+                    </StackPanel>
+                </StackPanel>
+
+                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center"
+                            Visibility="{Binding CanChooseDevice, Converter={StaticResource Vis}}">
+                    <ComboBox Width="350" ItemsSource="{Binding Source={StaticResource DeviceView}}" SelectedItem="{Binding SelectedDevice}"
+                              ItemTemplate="{StaticResource DeviceTemplate}" ToolTip="Audio source to decode">
+                        <ComboBox.GroupStyle>
+                            <GroupStyle>
+                                <GroupStyle.HeaderTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding Name}" FontSize="10.5" FontWeight="SemiBold" Foreground="{StaticResource Text3}" Margin="10,8,0,4" />
+                                    </DataTemplate>
+                                </GroupStyle.HeaderTemplate>
+                            </GroupStyle>
+                        </ComboBox.GroupStyle>
+                    </ComboBox>
+                    <Button Style="{StaticResource BtnIcon}" Content="&#xE72C;" Margin="6,0,0,0" Command="{Binding RefreshDevicesCommand}" ToolTip="Refresh device list" />
+                    <ComboBox Width="140" Margin="10,0,0,0" ItemsSource="{Binding ChannelOptions}" SelectedItem="{Binding SelectedChannel}"
+                              DisplayMemberPath="Label" ToolTip="Which channel of a stereo input to decode" />
+                </StackPanel>
+
+                <Border Grid.Column="2" Background="{StaticResource Field}" BorderBrush="{StaticResource Stroke}" BorderThickness="1" CornerRadius="6"
+                        Padding="12,0" Height="34" HorizontalAlignment="Left" MaxWidth="540"
+                        Visibility="{Binding IsPlaybackSource, Converter={StaticResource Vis}}">
+                    <Grid VerticalAlignment="Center">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="160" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="&#xE8D6;" Style="{StaticResource Glyph}" Foreground="{StaticResource Accent}" Margin="0,0,10,0" />
+                        <TextBlock Grid.Column="1" Text="{Binding StatusText}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" Margin="0,0,12,0" />
+                        <ProgressBar Grid.Column="2" Style="{StaticResource ThinProgress}" Maximum="1" Value="{Binding Progress, Mode=OneWay}" VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="3" Text="{Binding ProgressText}" FontFamily="{StaticResource MonoFont}" FontSize="11.5"
+                                   Foreground="{StaticResource Text2}" Margin="12,0,0,0" MinWidth="80" TextAlignment="Right" VerticalAlignment="Center" />
+                    </Grid>
+                </Border>
+
+                <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0,0,0">
+                    <Button Style="{StaticResource Btn}" Command="{Binding OpenFileCommand}" ToolTip="Decode a recording (WAV, MP3, …). You can also drop a file on the window.">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#xE8E5;" Style="{StaticResource Glyph}" FontSize="13" Margin="0,0,8,0" Foreground="{StaticResource Text2}" />
+                            <TextBlock Text="Open file…" />
+                        </StackPanel>
+                    </Button>
+                    <ToggleButton x:Name="SettingsToggle" Margin="8,0,0,0" Width="34" Height="34" ToolTip="Options"
+                                  IsHitTestVisible="{Binding IsOpen, ElementName=SettingsPopup, Converter={StaticResource Not}}">
+                        <ToggleButton.Template>
+                            <ControlTemplate TargetType="ToggleButton">
+                                <Border x:Name="Bd" Background="{StaticResource Card}" BorderBrush="{StaticResource Stroke}" BorderThickness="1" CornerRadius="6" Cursor="Hand">
+                                    <TextBlock x:Name="G" Text="&#xE713;" Style="{StaticResource Glyph}" HorizontalAlignment="Center" Foreground="{StaticResource Text2}" />
+                                </Border>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter TargetName="Bd" Property="Background" Value="{StaticResource CardHover}" />
+                                        <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource StrokeStrong}" />
+                                    </Trigger>
+                                    <Trigger Property="IsChecked" Value="True">
+                                        <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource Accent}" />
+                                        <Setter TargetName="G" Property="Foreground" Value="{StaticResource Accent}" />
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </ToggleButton.Template>
+                    </ToggleButton>
+                    <Popup x:Name="SettingsPopup" PlacementTarget="{Binding ElementName=SettingsToggle}" Placement="Bottom" HorizontalOffset="-266"
+                           VerticalOffset="8" StaysOpen="False" AllowsTransparency="True" PopupAnimation="Fade"
+                           IsOpen="{Binding IsChecked, ElementName=SettingsToggle}">
+                        <Border Width="300" Background="{StaticResource CardHover}" BorderBrush="{StaticResource StrokeStrong}" BorderThickness="1" CornerRadius="10" Padding="16,14" Margin="0,0,8,8">
+                            <Border.Effect>
+                                <DropShadowEffect BlurRadius="18" ShadowDepth="4" Opacity="0.45" Color="Black" />
+                            </Border.Effect>
+                            <StackPanel>
+                                <TextBlock Text="OPTIONS" Style="{StaticResource SectionLabel}" />
+                                <CheckBox Style="{StaticResource Switch}" IsChecked="{Binding RecordAudio}">
+                                    <StackPanel>
+                                        <TextBlock Text="Record alert audio" />
+                                        <TextBlock Text="Saves each activation as a WAV file" FontSize="11.5" Foreground="{StaticResource Text3}" />
+                                    </StackPanel>
+                                </CheckBox>
+                                <CheckBox Style="{StaticResource Switch}" IsChecked="{Binding PlaySound}" Margin="0,10,0,0">
+                                    <StackPanel>
+                                        <TextBlock Text="Sound on new alert" />
+                                        <TextBlock Text="Windows notification sound" FontSize="11.5" Foreground="{StaticResource Text3}" />
+                                    </StackPanel>
+                                </CheckBox>
+                                <CheckBox Style="{StaticResource Switch}" IsChecked="{Binding ListenOnLaunch}" Margin="0,10,0,0">
+                                    <StackPanel>
+                                        <TextBlock Text="Start listening at launch" />
+                                        <TextBlock Text="Uses the last selected input" FontSize="11.5" Foreground="{StaticResource Text3}" />
+                                    </StackPanel>
+                                </CheckBox>
+                                <CheckBox Style="{StaticResource Switch}" IsChecked="{Binding FastFileDecode}" Margin="0,10,0,0">
+                                    <StackPanel>
+                                        <TextBlock Text="Decode files at full speed" />
+                                        <TextBlock Text="Skip real-time playback of opened files" FontSize="11.5" Foreground="{StaticResource Text3}" />
+                                    </StackPanel>
+                                </CheckBox>
+                                <Border Height="1" Background="{StaticResource Stroke}" Margin="0,14,0,12" />
+                                <Button Style="{StaticResource BtnGhost}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Command="{Binding OpenRecordingsCommand}">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="&#xE838;" Style="{StaticResource Glyph}" FontSize="12" Margin="0,0,10,0" />
+                                        <TextBlock Text="Open recordings folder" />
+                                    </StackPanel>
+                                </Button>
+                                <Button Style="{StaticResource BtnGhost}" HorizontalAlignment="Stretch" Command="{Binding OpenDataFolderCommand}" Margin="0,2,0,0">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="&#xE8A5;" Style="{StaticResource Glyph}" FontSize="12" Margin="0,0,10,0" />
+                                        <TextBlock Text="Open alert log folder" />
+                                    </StackPanel>
+                                </Button>
+                            </StackPanel>
+                        </Border>
+                    </Popup>
+                    <Button Style="{StaticResource BtnStartStop}" Margin="8,0,0,0" MinWidth="150" Command="{Binding StartStopCommand}">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="{Binding StartStopGlyph}" Style="{StaticResource Glyph}" FontSize="12" Margin="0,0,8,0" />
+                            <TextBlock Text="{Binding StartStopText}" />
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <Grid Grid.Row="1" Margin="18,16,18,14">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="330" />
+                <ColumnDefinition Width="16" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <ScrollViewer x:Name="LeftScroll" VerticalScrollBarVisibility="Auto">
+                <Grid MinHeight="620" Height="{Binding ViewportHeight, ElementName=LeftScroll}">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <Border Style="{StaticResource CardBorder}" BorderBrush="{StaticResource Accent}" Background="#141B26" Margin="0,0,0,12"
+                            Visibility="{Binding IsPlayingRecording, Converter={StaticResource Vis}}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="PLAYING RECORDING" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource Accent}" />
+                                <TextBlock Text="{Binding PlaybackTitle}" Margin="0,4,0,8" TextTrimming="CharacterEllipsis" />
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <ProgressBar Style="{StaticResource ThinProgress}" Maximum="1" Value="{Binding PlaybackProgress, Mode=OneWay}" VerticalAlignment="Center" />
+                                    <TextBlock Grid.Column="1" Text="{Binding PlaybackText}" FontFamily="{StaticResource MonoFont}" FontSize="11" Foreground="{StaticResource Text2}" Margin="10,0,0,0" />
+                                </Grid>
+                            </StackPanel>
+                            <Button Grid.Column="1" Style="{StaticResource BtnIcon}" Content="&#xE71A;" Margin="12,0,0,0" VerticalAlignment="Center"
+                                    Command="{Binding StopPlaybackCommand}" ToolTip="Stop playback" />
+                        </Grid>
+                    </Border>
+
+                    <Border Grid.Row="1" Style="{StaticResource CardBorder}">
+                        <StackPanel>
+                            <DockPanel>
+                                <Border x:Name="ClipBadge" DockPanel.Dock="Right" Background="{StaticResource RedSoft}" CornerRadius="4" Padding="6,1" Visibility="Hidden" VerticalAlignment="Top">
+                                    <TextBlock Text="CLIP" FontSize="10.5" FontWeight="Bold" Foreground="{StaticResource Red}" />
+                                </Border>
+                                <TextBlock Text="INPUT LEVEL" Style="{StaticResource SectionLabel}" />
+                            </DockPanel>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="18" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="54" />
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <TextBlock x:Name="LabelL" Text="L" FontSize="11" Foreground="{StaticResource Text3}" VerticalAlignment="Center" />
+                                <c:LevelMeter x:Name="MeterL" Grid.Column="1" Height="14" />
+                                <TextBlock x:Name="ReadoutL" Grid.Column="2" Text="−∞" FontFamily="{StaticResource MonoFont}" FontSize="11.5" Foreground="{StaticResource Text2}"
+                                           HorizontalAlignment="Right" VerticalAlignment="Center" />
+                                <TextBlock x:Name="LabelR" Grid.Row="1" Text="R" FontSize="11" Foreground="{StaticResource Text3}" VerticalAlignment="Center" Margin="0,8,0,0" />
+                                <c:LevelMeter x:Name="MeterR" Grid.Row="1" Grid.Column="1" Height="14" Margin="0,8,0,0" />
+                                <TextBlock x:Name="ReadoutR" Grid.Row="1" Grid.Column="2" Text="−∞" FontFamily="{StaticResource MonoFont}" FontSize="11.5"
+                                           Foreground="{StaticResource Text2}" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,8,0,0" />
+                                <Grid Grid.Row="2" Grid.Column="1" Margin="0,5,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="20*" />
+                                        <ColumnDefinition Width="20*" />
+                                        <ColumnDefinition Width="10*" />
+                                        <ColumnDefinition Width="10*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="-60" FontSize="10" Foreground="{StaticResource Text3}" />
+                                    <TextBlock Grid.Column="1" Text="-40" FontSize="10" Foreground="{StaticResource Text3}" Margin="-6,0,0,0" />
+                                    <TextBlock Grid.Column="2" Text="-20" FontSize="10" Foreground="{StaticResource Text3}" Margin="-6,0,0,0" />
+                                    <TextBlock Grid.Column="3" Text="-10" FontSize="10" Foreground="{StaticResource Text3}" Margin="-6,0,0,0" />
+                                    <TextBlock Grid.Column="3" Text="0 dB" FontSize="10" Foreground="{StaticResource Text3}" HorizontalAlignment="Right" />
+                                </Grid>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Grid.Row="2" Style="{StaticResource CardBorder}" Margin="0,12,0,0">
+                        <DockPanel>
+                            <DockPanel DockPanel.Dock="Top">
+                                <TextBlock DockPanel.Dock="Right" Text="0 – 3 kHz" FontSize="11" Foreground="{StaticResource Text3}" />
+                                <TextBlock Text="SPECTRUM" Style="{StaticResource SectionLabel}" />
+                            </DockPanel>
+                            <Grid DockPanel.Dock="Bottom" Margin="0,5,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="0" FontSize="10" Foreground="{StaticResource Text3}" />
+                                <TextBlock Grid.Column="1" Text="1 kHz" FontSize="10" Foreground="{StaticResource Text3}" Margin="-10,0,0,0" />
+                                <TextBlock Grid.Column="2" Text="2 kHz" FontSize="10" Foreground="{StaticResource Text3}" Margin="-10,0,0,0" />
+                                <TextBlock Grid.Column="2" Text="3 kHz" FontSize="10" Foreground="{StaticResource Text3}" HorizontalAlignment="Right" />
+                            </Grid>
+                            <c:Waterfall x:Name="Waterfall" MinHeight="110" />
+                        </DockPanel>
+                    </Border>
+
+                    <Border Grid.Row="3" Style="{StaticResource CardBorder}" Margin="0,12,0,0">
+                        <StackPanel>
+                            <TextBlock Text="SIGNALS" Style="{StaticResource SectionLabel}" />
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="30" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+
+                                <c:SignalLamp IsOn="{Binding SameActive}" OnBrush="{StaticResource Accent}" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="0,2,0,0" />
+                                <StackPanel Grid.Column="1" Margin="0,0,0,10">
+                                    <TextBlock Text="SAME data burst" Style="{StaticResource SignalTitle}" />
+                                    <TextBlock Text="FSK 1562.5 / 2083.3 Hz · 520.83 baud" Style="{StaticResource SignalSub}" />
+                                </StackPanel>
+
+                                <c:SignalLamp Grid.Row="1" IsOn="{Binding EasToneActive}" OnBrush="{StaticResource Amber}" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="0,2,0,0" />
+                                <StackPanel Grid.Row="1" Grid.Column="1" Margin="0,0,0,10">
+                                    <TextBlock Text="EAS attention signal" Style="{StaticResource SignalTitle}" />
+                                    <TextBlock Text="Dual tone 853 + 960 Hz" Style="{StaticResource SignalSub}" />
+                                </StackPanel>
+
+                                <c:SignalLamp Grid.Row="2" IsOn="{Binding NwrToneActive}" OnBrush="{StaticResource Amber}" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="0,2,0,0" />
+                                <StackPanel Grid.Row="2" Grid.Column="1" Margin="0,0,0,10">
+                                    <TextBlock Text="NOAA Weather Radio tone" Style="{StaticResource SignalTitle}" />
+                                    <TextBlock Text="Single tone 1050 Hz" Style="{StaticResource SignalSub}" />
+                                </StackPanel>
+
+                                <c:SignalLamp Grid.Row="3" IsOn="{Binding EomActive}" OnBrush="{StaticResource Green}" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="0,2,0,0" />
+                                <StackPanel Grid.Row="3" Grid.Column="1" Margin="0,0,0,10">
+                                    <TextBlock Text="End of message" Style="{StaticResource SignalTitle}" />
+                                    <TextBlock Text="NNNN burst received" Style="{StaticResource SignalSub}" />
+                                </StackPanel>
+
+                                <c:SignalLamp Grid.Row="4" IsOn="{Binding RecordingActive}" OnBrush="{StaticResource Red}" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="0,2,0,0" />
+                                <StackPanel Grid.Row="4" Grid.Column="1">
+                                    <TextBlock Text="Recording alert audio" Style="{StaticResource SignalTitle}" />
+                                    <TextBlock Text="{Binding RecordingHint}" Style="{StaticResource SignalSub}" />
+                                </StackPanel>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </ScrollViewer>
+
+            <Grid Grid.Column="2">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <DockPanel Margin="0,0,0,12">
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                        <StackPanel Orientation="Horizontal" Visibility="{Binding IsLiveTab, Converter={StaticResource Vis}}">
+                            <Button Style="{StaticResource BtnGhost}" Command="{Binding DismissAlertCommand}" ToolTip="Hide this alert from the Live tab (it stays in History)" Margin="4,0,0,0"
+                                    Visibility="{Binding HasCurrentAlert, Converter={StaticResource Vis}}">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="&#xE711;" Style="{StaticResource Glyph}" FontSize="11" Margin="0,0,6,0" />
+                                    <TextBlock Text="Dismiss" />
+                                </StackPanel>
+                            </Button>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Visibility="{Binding IsHistoryTab, Converter={StaticResource Vis}}">
+                            <Button Style="{StaticResource BtnGhost}" Command="{Binding ExportHistoryCommand}" ToolTip="Save the listed alerts as a CSV spreadsheet">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="&#xE8A5;" Style="{StaticResource Glyph}" FontSize="12" Margin="0,0,6,0" />
+                                    <TextBlock Text="Export CSV" />
+                                </StackPanel>
+                            </Button>
+                            <Button Style="{StaticResource BtnGhost}" Command="{Binding ClearHistoryCommand}" ToolTip="Remove all alerts from History" Margin="4,0,0,0">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="&#xE74D;" Style="{StaticResource Glyph}" FontSize="12" Margin="0,0,6,0" />
+                                    <TextBlock Text="Clear history" />
+                                </StackPanel>
+                            </Button>
+                        </StackPanel>
+                    </StackPanel>
+
+                    <Border Background="{StaticResource Panel}" BorderBrush="{StaticResource Stroke}" BorderThickness="1" CornerRadius="9" Padding="3" HorizontalAlignment="Left">
+                        <StackPanel Orientation="Horizontal">
+                            <RadioButton Style="{StaticResource Segment}" GroupName="Tabs" IsChecked="{Binding IsLiveTab}">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="Live" />
+                                    <Ellipse Width="8" Height="8" Margin="8,1,0,0" VerticalAlignment="Center" Fill="{Binding CurrentAlert.SeverityBrush}"
+                                             ToolTip="An alert is in effect" Visibility="{Binding HasActiveAlert, Converter={StaticResource Vis}}" />
+                                </StackPanel>
+                            </RadioButton>
+                            <RadioButton Style="{StaticResource Segment}" GroupName="Tabs" IsChecked="{Binding IsHistoryTab}" Margin="2,0,0,0">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="History" />
+                                    <Border Background="#2A303B" CornerRadius="8" Padding="7,0" Margin="8,0,0,0" Visibility="{Binding HasHistory, Converter={StaticResource Vis}}">
+                                        <TextBlock Text="{Binding HistoryCount}" FontSize="11.5" FontWeight="Normal" Foreground="{StaticResource Text2}" />
+                                    </Border>
+                                </StackPanel>
+                            </RadioButton>
+                        </StackPanel>
+                    </Border>
+                </DockPanel>
+
+                <Grid x:Name="LiveRoot" Grid.Row="1" Visibility="{Binding IsLiveTab, Converter={StaticResource Vis}}">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="2" />
+                        <RowDefinition Height="*" MinHeight="150" />
+                    </Grid.RowDefinitions>
+
+                    <DockPanel Margin="2,0,0,8" Visibility="{Binding HasCurrentAlert, Converter={StaticResource Vis}}">
+                        <Button DockPanel.Dock="Right" Style="{StaticResource BtnGhost}" Height="24" Command="{Binding ShowHistoryCommand}" ToolTip="Open History">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="{Binding EarlierAlertsText}" FontSize="12" />
+                                <TextBlock Text="&#xE76C;" Style="{StaticResource Glyph}" FontSize="10" Margin="6,1,0,0" />
+                            </StackPanel>
+                        </Button>
+                        <TextBlock Text="{Binding CurrentAlertLabel}" Style="{StaticResource SectionLabel}" Margin="0" VerticalAlignment="Center" />
+                    </DockPanel>
+
+                    <ScrollViewer x:Name="AlertsScroll" Grid.Row="1" VerticalScrollBarVisibility="Auto" Visibility="{Binding HasCurrentAlert, Converter={StaticResource Vis}}">
+                        <ContentControl Content="{Binding CurrentAlert}" ContentTemplate="{StaticResource AlertTemplate}" Focusable="False" Margin="0,0,4,0" />
+                    </ScrollViewer>
+
+                    <Border Grid.Row="1" Style="{StaticResource CardBorder}" Margin="0,0,0,12" Padding="24,28" Visibility="{Binding HasCurrentAlert, Converter={StaticResource NotVis}}">
+                        <StackPanel HorizontalAlignment="Center" MaxWidth="500">
+                            <Border Width="60" Height="60" CornerRadius="30" Background="{StaticResource AccentSoft}" HorizontalAlignment="Center">
+                                <ContentPresenter ContentTemplate="{StaticResource BroadcastIcon}" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                    <ContentPresenter.LayoutTransform>
+                                        <ScaleTransform ScaleX="1.35" ScaleY="1.35" />
+                                    </ContentPresenter.LayoutTransform>
+                                </ContentPresenter>
+                            </Border>
+                            <TextBlock Text="No alerts decoded yet" FontSize="18" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,16,0,8" />
+                            <TextBlock TextWrapping="Wrap" TextAlignment="Center" Foreground="{StaticResource Text2}" LineHeight="20">
+                                Pick an input — a weather radio or scanner on your line-in, or <Run Foreground="{StaticResource Text}">System audio</Run> for a web stream — and press
+                                <Run Foreground="{StaticResource Text}">Start listening</Run>. SAME headers, EAS attention tones and end-of-message bursts are decoded automatically, and each alert is mapped.
+                            </TextBlock>
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,18,0,0">
+                                <Button Style="{StaticResource BtnPrimary}" Command="{Binding StartStopCommand}" Margin="0,0,8,0"
+                                        Visibility="{Binding IsListening, Converter={StaticResource NotVis}}">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="&#xE768;" Style="{StaticResource Glyph}" FontSize="12" Margin="0,0,8,0" />
+                                        <TextBlock Text="Start listening" />
+                                    </StackPanel>
+                                </Button>
+                            </StackPanel>
+                            <TextBlock Text="Tip: drop a WAV or MP3 recording anywhere on this window to decode it." FontSize="12"
+                                       Foreground="{StaticResource Text3}" HorizontalAlignment="Center" Margin="0,16,0,0" />
+                        </StackPanel>
+                    </Border>
+
+                    <Border Grid.Row="3" Style="{StaticResource CardBorder}" Padding="12,10,8,8">
+                        <DockPanel>
+                            <DockPanel DockPanel.Dock="Top" Margin="4,0,4,6">
+                                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                                    <CheckBox Style="{StaticResource Switch}" IsChecked="{Binding VerboseLog}" Margin="0,0,12,0" VerticalAlignment="Center"
+                                              ToolTip="Show raw bytes, damaged bytes, burst-by-burst vote and header fields">
+                                        <TextBlock Text="Verbose" FontSize="12" Foreground="{StaticResource Text2}" />
+                                    </CheckBox>
+                                    <Button Style="{StaticResource BtnGhost}" Height="24" Command="{Binding CopyLogCommand}" ToolTip="Copy the activity log">
+                                        <TextBlock Text="&#xE8C8;" Style="{StaticResource Glyph}" FontSize="11" />
+                                    </Button>
+                                    <Button Style="{StaticResource BtnGhost}" Height="24" Command="{Binding ClearLogCommand}" ToolTip="Clear the activity log">
+                                        <TextBlock Text="&#xE74D;" Style="{StaticResource Glyph}" FontSize="11" />
+                                    </Button>
+                                </StackPanel>
+                                <TextBlock Text="ACTIVITY" Style="{StaticResource SectionLabel}" Margin="0" VerticalAlignment="Center" />
+                            </DockPanel>
+                            <ListBox x:Name="LogList" Style="{StaticResource LogList}" ItemsSource="{Binding Log}" ItemTemplate="{StaticResource LogTemplate}" />
+                        </DockPanel>
+                    </Border>
+                </Grid>
+
+                <Grid Grid.Row="1" Visibility="{Binding IsHistoryTab, Converter={StaticResource Vis}}">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <DockPanel Margin="0,0,0,12">
+                        <TextBlock DockPanel.Dock="Right" Text="{Binding HistoryCountText}" Foreground="{StaticResource Text3}" VerticalAlignment="Center" Margin="12,0,2,0" />
+                        <StackPanel Orientation="Horizontal">
+                            <TextBox Style="{StaticResource SearchBox}" Width="280" Tag="Search event, area, station or header"
+                                     Text="{Binding HistorySearch, UpdateSourceTrigger=PropertyChanged, Delay=150}" />
+                            <ComboBox Width="210" Margin="10,0,0,0" ItemsSource="{Binding HistoryFilters}" SelectedItem="{Binding SelectedHistoryFilter}"
+                                      DisplayMemberPath="Label" ToolTip="Filter by severity" />
+                        </StackPanel>
+                    </DockPanel>
+
+                    <Grid Grid.Row="1">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="0.42*" MinWidth="250" MaxWidth="380" />
+                            <ColumnDefinition Width="14" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+
+                        <Border Style="{StaticResource CardBorder}" Padding="6">
+                            <Grid>
+                                <ListBox x:Name="HistoryList" Style="{StaticResource HistoryList}" ItemsSource="{Binding HistoryView}"
+                                         SelectedItem="{Binding SelectedHistory}" ItemTemplate="{StaticResource HistoryRowTemplate}" />
+                                <TextBlock Text="Alerts you receive are saved here." Foreground="{StaticResource Text3}" HorizontalAlignment="Center"
+                                           VerticalAlignment="Center" TextWrapping="Wrap" TextAlignment="Center" Margin="20"
+                                           Visibility="{Binding HasHistory, Converter={StaticResource NotVis}}" />
+                            </Grid>
+                        </Border>
+
+                        <ScrollViewer x:Name="HistoryDetailScroll" Grid.Column="2" VerticalScrollBarVisibility="Auto" Visibility="{Binding HasSelectedHistory, Converter={StaticResource Vis}}">
+                            <StackPanel Margin="0,0,4,0">
+                                <ContentControl Content="{Binding SelectedHistory}" ContentTemplate="{StaticResource AlertTemplate}" Focusable="False" />
+
+                                <Border Style="{StaticResource CardBorder}" Padding="12,10,10,10">
+                                    <StackPanel>
+                                        <DockPanel Margin="4,0,0,8">
+                                            <CheckBox DockPanel.Dock="Right" Style="{StaticResource Switch}" IsChecked="{Binding VerboseLog}" Margin="0" VerticalAlignment="Center">
+                                                <TextBlock Text="Verbose" FontSize="12" Foreground="{StaticResource Text2}" />
+                                            </CheckBox>
+                                            <TextBlock Text="ACTIVITY FOR THIS ALERT" Style="{StaticResource SectionLabel}" Margin="0" VerticalAlignment="Center" />
+                                        </DockPanel>
+                                        <ItemsControl ItemsSource="{Binding SelectedHistory.ActivityLog}" ItemTemplate="{StaticResource LogTemplate}" Focusable="False" Margin="4,0,0,0" />
+                                        <TextBlock Text="No activity was recorded for this alert (it was received before activity logging was added)."
+                                                   Foreground="{StaticResource Text3}" TextWrapping="Wrap" Margin="4,0,0,4"
+                                                   Visibility="{Binding SelectedHistory.HasActivityLog, Converter={StaticResource NotVis}}" />
+                                    </StackPanel>
+                                </Border>
+
+                                <Button Style="{StaticResource BtnGhost}" HorizontalAlignment="Left" Command="{Binding DeleteHistoryCommand}" CommandParameter="{Binding SelectedHistory}"
+                                        ToolTip="Remove this alert from History (its recording file is kept)" Margin="0,10,0,0">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="&#xE74D;" Style="{StaticResource Glyph}" FontSize="12" Margin="0,0,6,0" />
+                                        <TextBlock Text="Remove from history" />
+                                    </StackPanel>
+                                </Button>
+                            </StackPanel>
+                        </ScrollViewer>
+                        <Border Grid.Column="2" Style="{StaticResource CardBorder}" Visibility="{Binding HasSelectedHistory, Converter={StaticResource NotVis}}">
+                            <TextBlock Text="Select an alert to see its details, map and recording." Foreground="{StaticResource Text3}"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                    </Grid>
+                </Grid>
+            </Grid>
+        </Grid>
+
+        <Border Grid.Row="2" Background="{StaticResource Panel}" BorderBrush="{StaticResource Stroke}" BorderThickness="0,1,0,0" Padding="18,6">
+            <DockPanel>
+                <Button DockPanel.Dock="Right" Style="{StaticResource BtnGhost}" Height="22" FontSize="12" Command="{Binding OpenDataFolderCommand}"
+                        ToolTip="Alert log, history and recordings">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="&#xE838;" Style="{StaticResource Glyph}" FontSize="11" Margin="0,0,6,0" />
+                        <TextBlock Text="Documents\SAME EAS Decoder" />
+                    </StackPanel>
+                </Button>
+                <TextBlock DockPanel.Dock="Right" Text="Powered by Emma-Tech" FontSize="11" Foreground="{StaticResource Text3}"
+                           Opacity="0.55" VerticalAlignment="Center" Margin="0,0,16,0" />
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <c:SignalLamp IsOn="{Binding IsListening}" OnBrush="{StaticResource Green}" Width="14" Height="14" Margin="0,0,6,0" />
+                    <TextBlock Text="{Binding StatusText}" FontSize="12" Foreground="{StaticResource Text2}" />
+                    <TextBlock Text="  ·  " FontSize="12" Foreground="{StaticResource Text3}" Visibility="{Binding IsListening, Converter={StaticResource Vis}}" />
+                    <TextBlock Text="{Binding FormatText}" FontSize="12" Foreground="{StaticResource Text3}" />
+                </StackPanel>
+            </DockPanel>
+        </Border>
+    </Grid>
+</Window>

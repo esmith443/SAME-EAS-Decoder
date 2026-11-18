@@ -1,0 +1,53 @@
+<Window x:Class="SameEasDecoder.MapWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:c="clr-namespace:SameEasDecoder.Controls"
+        Icon="Assets/app.ico"
+        Width="1000" Height="720" MinWidth="560" MinHeight="420"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
+        Background="{StaticResource Bg}" Foreground="{StaticResource Text}"
+        FontFamily="{StaticResource UiFont}" FontSize="13"
+        UseLayoutRounding="True" TextOptions.TextFormattingMode="Display">
+    <Grid Background="{StaticResource Bg}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+        <Border Background="{StaticResource Panel}" BorderBrush="{StaticResource Stroke}" BorderThickness="0,0,0,1" Padding="18,12">
+            <DockPanel>
+                <TextBlock DockPanel.Dock="Right" Text="{Binding ReceivedLong}" Foreground="{StaticResource Text3}" VerticalAlignment="Center" FontSize="12" />
+                <Border CornerRadius="4" Padding="7,2" VerticalAlignment="Center" Margin="0,0,10,0" BorderThickness="1" BorderBrush="{Binding SeverityBrush}">
+                    <TextBlock Text="{Binding SeverityLabel}" FontSize="10.5" FontWeight="Bold" Foreground="{Binding SeverityBrush}" />
+                </Border>
+                <StackPanel>
+                    <TextBlock Text="{Binding EventName}" FontSize="16" FontWeight="SemiBold" />
+                    <TextBlock Text="{Binding OriginLine}" Foreground="{StaticResource Text2}" FontSize="12" />
+                </StackPanel>
+            </DockPanel>
+        </Border>
+        <Grid Grid.Row="1" Margin="16">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="14" />
+                <ColumnDefinition Width="250" />
+            </Grid.ColumnDefinitions>
+            <Border CornerRadius="10" BorderBrush="{StaticResource Stroke}" BorderThickness="1" ClipToBounds="True">
+                <c:AlertMap Areas="{Binding Areas}" HighlightColor="{Binding SeverityColor}" Interactive="True" />
+            </Border>
+            <Border Grid.Column="2" Style="{StaticResource CardBorder}">
+                <DockPanel>
+                    <TextBlock DockPanel.Dock="Top" Text="AREAS" Style="{StaticResource SectionLabel}" />
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <ItemsControl ItemsSource="{Binding AreaNames}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding}" TextWrapping="Wrap" Margin="0,0,0,8" />
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </DockPanel>
+            </Border>
+        </Grid>
+    </Grid>
+</Window>

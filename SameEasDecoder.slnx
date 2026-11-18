@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/SameEasDecoder.Core/SameEasDecoder.Core.csproj" />
+    <Project Path="src/SameEasDecoder/SameEasDecoder.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/SameEasDecoder.Tests/SameEasDecoder.Tests.csproj" />
+  </Folder>
+</Solution>
